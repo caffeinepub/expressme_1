@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Figtree";
+  src: url("/assets/fonts/Figtree.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+
+    /* ExpressMe Light Blue Palette */
+    /* Page background: very pale blue #EAF5FF → oklch(0.965 0.018 220) */
+    --background: 0.965 0.018 220;
+    /* Foreground: near-black #111827 → oklch(0.145 0.01 240) */
+    --foreground: 0.145 0.01 240;
+
+    /* Card: white */
+    --card: 1 0 0;
+    --card-foreground: 0.145 0.01 240;
+
+    /* Popover: white */
+    --popover: 1 0 0;
+    --popover-foreground: 0.145 0.01 240;
+
+    /* Primary: medium steel blue #6FA3C8 → oklch(0.62 0.1 220) */
+    --primary: 0.62 0.1 220;
+    --primary-foreground: 1 0 0;
+
+    /* Secondary: light blue tint #D9ECFF → oklch(0.935 0.04 220) */
+    --secondary: 0.935 0.04 220;
+    --secondary-foreground: 0.145 0.01 240;
+
+    /* Muted: very soft blue-gray */
+    --muted: 0.95 0.015 220;
+    --muted-foreground: 0.556 0.01 220;
+
+    /* Accent: same as secondary */
+    --accent: 0.935 0.04 220;
+    --accent-foreground: 0.145 0.01 240;
+
+    /* Destructive */
+    --destructive: 0.577 0.245 27.325;
+    --destructive-foreground: 0.985 0 0;
+
+    /* Borders: light gray-blue #DDE7F2 → oklch(0.91 0.025 220) */
+    --border: 0.91 0.025 220;
+    --input: 0.91 0.025 220;
+    --ring: 0.62 0.1 220;
+
+    /* Charts */
+    --chart-1: 0.646 0.222 41.116;
+    --chart-2: 0.6 0.118 184.704;
+    --chart-3: 0.62 0.1 220;
+    --chart-4: 0.828 0.189 84.429;
+    --chart-5: 0.769 0.188 70.08;
+
+    /* Sidebar */
+    --sidebar: 1 0 0;
+    --sidebar-foreground: 0.145 0.01 240;
+    --sidebar-primary: 0.62 0.1 220;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.935 0.04 220;
+    --sidebar-accent-foreground: 0.145 0.01 240;
+    --sidebar-border: 0.91 0.025 220;
+    --sidebar-ring: 0.62 0.1 220;
+
+    /* Custom tokens */
+    --hero-gradient-start: oklch(0.93 0.04 220);
+    --hero-gradient-end: oklch(0.88 0.055 220);
+    --nav-active-bg: oklch(0.935 0.04 220);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Figtree", system-ui, sans-serif;
+  }
+}
+
+/* Post card line-clamp utility */
+.line-clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
