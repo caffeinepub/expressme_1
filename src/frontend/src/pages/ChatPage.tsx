@@ -62,6 +62,24 @@ function getUnreadCount(
   ).length;
 }
 
+const EMOJI_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+
+interface OnlineDotProps {
+  isOnline: boolean;
+  size?: "sm" | "md";
+}
+
+function OnlineDot({ isOnline, size = "sm" }: OnlineDotProps) {
+  if (!isOnline) return null;
+  const sizeCls = size === "md" ? "w-3 h-3" : "w-2.5 h-2.5";
+  return (
+    <span
+      className={`absolute bottom-0 right-0 ${sizeCls} rounded-full bg-green-500 border-2 border-background`}
+      aria-label="Online"
+    />
+  );
+}
+
 interface ChatPageProps {
   currentUser: User;
   groupChats: GroupChat[];
@@ -73,6 +91,14 @@ interface ChatPageProps {
   onSendDM: (dmId: string, content: string) => void;
   onMarkRead: (chatId: string) => void;
   lastReadMap: Record<string, Date>;
+  onlineUserIds: Set<string>;
+  onReactToMessage: (
+    chatType: "group" | "dm",
+    chatId: string,
+    messageId: string,
+    emoji: string,
+    userId: string,
+  ) => void;
 }
 
 type ActiveChat =
@@ -93,6 +119,8 @@ export function ChatPage({
   onSendDM,
   onMarkRead,
   lastReadMap,
+  onlineUserIds,
+  onReactToMessage,
 }: ChatPageProps) {
   const [activeChat, setActiveChat] = useState<ActiveChat>(null);
   const [activeTab, setActiveTab] = useState<TabType>("groups");
@@ -105,6 +133,7 @@ export function ChatPage({
   const [groupNameError, setGroupNameError] = useState("");
   const [membersError, setMembersError] = useState("");
   const [dmUserError, setDMUserError] = useState("");
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const myGroupChats = groupChats.filter((c) =>
@@ -231,8 +260,88 @@ export function ChatPage({
     }, 0);
   })();
 
+  // Renders reaction pills below a message
+  function renderReactions(
+    msg: { id: string; reactions?: Record<string, string[]> },
+    chatType: "group" | "dm",
+    chatId: string,
+    isMe: boolean,
+  ) {
+    const reactions = msg.reactions;
+    if (!reactions || Object.keys(reactions).length === 0) return null;
+    return (
+      <div
+        className={`flex flex-wrap gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}
+      >
+        {Object.entries(reactions).map(([emoji, userIds]) => {
+          const iReacted = userIds.includes(currentUser.id);
+          return (
+            <button
+              type="button"
+              key={emoji}
+              onClick={() =>
+                onReactToMessage(
+                  chatType,
+                  chatId,
+                  msg.id,
+                  emoji,
+                  currentUser.id,
+                )
+              }
+              className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-medium transition-all ${
+                iReacted
+                  ? "bg-primary/20 text-primary border border-primary/30"
+                  : "bg-secondary/80 text-foreground border border-border hover:bg-secondary"
+              }`}
+            >
+              <span>{emoji}</span>
+              <span>{userIds.length}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Renders the floating emoji picker on hover
+  function renderEmojiPicker(
+    msgId: string,
+    chatType: "group" | "dm",
+    chatId: string,
+    isMe: boolean,
+  ) {
+    if (hoveredMessageId !== msgId) return null;
+    return (
+      <div
+        className={`absolute -top-9 ${
+          isMe ? "right-0" : "left-0"
+        } flex items-center gap-0.5 bg-card border border-border rounded-full px-2 py-1 shadow-md z-10`}
+        onMouseEnter={() => setHoveredMessageId(msgId)}
+        onMouseLeave={() => setHoveredMessageId(null)}
+      >
+        {EMOJI_REACTIONS.map((emoji) => (
+          <button
+            type="button"
+            key={emoji}
+            onClick={() =>
+              onReactToMessage(chatType, chatId, msgId, emoji, currentUser.id)
+            }
+            className="text-base leading-none hover:scale-125 transition-transform px-0.5 py-0.5 rounded"
+            title={`React with ${emoji}`}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   // --- Chat Room View (Group) ---
   if (activeChatData) {
+    const onlineMemberCount = activeChatData.memberIds.filter((id) =>
+      onlineUserIds.has(id),
+    ).length;
+
     return (
       <main
         className="max-w-[760px] mx-auto px-4 py-6 flex flex-col h-[calc(100vh-80px)]"
@@ -255,10 +364,18 @@ export function ChatPage({
             <h1 className="text-lg font-bold text-foreground truncate">
               {activeChatData.name}
             </h1>
-            <p className="text-xs text-muted-foreground">
-              {activeChatData.memberIds.length} member
-              {activeChatData.memberIds.length !== 1 ? "s" : ""}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                {activeChatData.memberIds.length} member
+                {activeChatData.memberIds.length !== 1 ? "s" : ""}
+              </p>
+              {onlineMemberCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                  {onlineMemberCount} online
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -278,24 +395,24 @@ export function ChatPage({
               <div className="flex flex-col gap-4">
                 {activeChatData.messages.map((msg, i) => {
                   const isMe = msg.authorId === currentUser.id;
+                  const isOnline = onlineUserIds.has(msg.authorId);
                   return (
                     <div
                       key={msg.id}
                       data-ocid={`chat.item.${i + 1}`}
-                      className={`flex gap-2.5 ${
-                        isMe ? "flex-row-reverse" : "flex-row"
-                      }`}
+                      className={`flex gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
                     >
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs flex-shrink-0 mt-0.5"
-                        style={{ backgroundColor: avatarColor(msg.authorId) }}
-                      >
-                        {getInitials(msg.authorName)}
+                      <div className="relative flex-shrink-0 mt-0.5">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs"
+                          style={{ backgroundColor: avatarColor(msg.authorId) }}
+                        >
+                          {getInitials(msg.authorName)}
+                        </div>
+                        <OnlineDot isOnline={isOnline} />
                       </div>
                       <div
-                        className={`max-w-[70%] flex flex-col gap-0.5 ${
-                          isMe ? "items-end" : "items-start"
-                        }`}
+                        className={`max-w-[70%] flex flex-col gap-0.5 ${isMe ? "items-end" : "items-start"}`}
                       >
                         <div className="flex items-baseline gap-2">
                           {!isMe && (
@@ -308,14 +425,27 @@ export function ChatPage({
                           </span>
                         </div>
                         <div
-                          className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
-                            isMe
-                              ? "bg-primary text-primary-foreground rounded-tr-sm"
-                              : "bg-secondary text-secondary-foreground rounded-tl-sm"
-                          }`}
+                          className="relative"
+                          onMouseEnter={() => setHoveredMessageId(msg.id)}
+                          onMouseLeave={() => setHoveredMessageId(null)}
                         >
-                          {msg.content}
+                          {renderEmojiPicker(
+                            msg.id,
+                            "group",
+                            activeChatData.id,
+                            isMe,
+                          )}
+                          <div
+                            className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
+                              isMe
+                                ? "bg-primary text-primary-foreground rounded-tr-sm"
+                                : "bg-secondary text-secondary-foreground rounded-tl-sm"
+                            }`}
+                          >
+                            {msg.content}
+                          </div>
                         </div>
+                        {renderReactions(msg, "group", activeChatData.id, isMe)}
                       </div>
                     </div>
                   );
@@ -355,6 +485,7 @@ export function ChatPage({
       activeDMData.participantIds[0] === currentUser.id ? 1 : 0;
     const otherName = activeDMData.participantNames[otherIndex];
     const otherId = activeDMData.participantIds[otherIndex];
+    const isOtherOnline = onlineUserIds.has(otherId);
 
     return (
       <main
@@ -371,17 +502,24 @@ export function ChatPage({
           >
             <ArrowLeft className="h-5 w-5 text-foreground" />
           </button>
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"
-            style={{ backgroundColor: avatarColor(otherId) }}
-          >
-            {getInitials(otherName)}
+          <div className="relative flex-shrink-0">
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm"
+              style={{ backgroundColor: avatarColor(otherId) }}
+            >
+              {getInitials(otherName)}
+            </div>
+            <OnlineDot isOnline={isOtherOnline} size="md" />
           </div>
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-foreground truncate">
               {otherName}
             </h1>
-            <p className="text-xs text-muted-foreground">Direct message</p>
+            {isOtherOnline ? (
+              <p className="text-xs text-green-600 font-medium">Online</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Offline</p>
+            )}
           </div>
         </div>
 
@@ -401,6 +539,7 @@ export function ChatPage({
               <div className="flex flex-col gap-4">
                 {activeDMData.messages.map((msg, i) => {
                   const isMe = msg.authorId === currentUser.id;
+                  const isOnline = onlineUserIds.has(msg.authorId);
                   return (
                     <div
                       key={msg.id}
@@ -409,11 +548,14 @@ export function ChatPage({
                         isMe ? "flex-row-reverse" : "flex-row"
                       }`}
                     >
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs flex-shrink-0 mt-0.5"
-                        style={{ backgroundColor: avatarColor(msg.authorId) }}
-                      >
-                        {getInitials(msg.authorName)}
+                      <div className="relative flex-shrink-0 mt-0.5">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs"
+                          style={{ backgroundColor: avatarColor(msg.authorId) }}
+                        >
+                          {getInitials(msg.authorName)}
+                        </div>
+                        <OnlineDot isOnline={isOnline} />
                       </div>
                       <div
                         className={`max-w-[70%] flex flex-col gap-0.5 ${
@@ -424,14 +566,27 @@ export function ChatPage({
                           {formatTime(msg.createdAt)}
                         </span>
                         <div
-                          className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
-                            isMe
-                              ? "bg-primary text-primary-foreground rounded-tr-sm"
-                              : "bg-secondary text-secondary-foreground rounded-tl-sm"
-                          }`}
+                          className="relative"
+                          onMouseEnter={() => setHoveredMessageId(msg.id)}
+                          onMouseLeave={() => setHoveredMessageId(null)}
                         >
-                          {msg.content}
+                          {renderEmojiPicker(
+                            msg.id,
+                            "dm",
+                            activeDMData.id,
+                            isMe,
+                          )}
+                          <div
+                            className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
+                              isMe
+                                ? "bg-primary text-primary-foreground rounded-tr-sm"
+                                : "bg-secondary text-secondary-foreground rounded-tl-sm"
+                            }`}
+                          >
+                            {msg.content}
+                          </div>
                         </div>
+                        {renderReactions(msg, "dm", activeDMData.id, isMe)}
                       </div>
                     </div>
                   );
@@ -568,6 +723,9 @@ export function ChatPage({
                 currentUser.id,
                 lastReadMap[chat.id],
               );
+              const onlineCount = chat.memberIds.filter((id) =>
+                onlineUserIds.has(id),
+              ).length;
               return (
                 <button
                   type="button"
@@ -603,12 +761,20 @@ export function ChatPage({
                           ? `${lastMsg.authorName}: ${lastMsg.content}`
                           : "No messages yet"}
                       </p>
-                      <div className="flex items-center gap-1 mt-1.5">
-                        <Users className="h-3 w-3 text-muted-foreground/70" />
-                        <span className="text-[11px] text-muted-foreground/70">
-                          {chat.memberIds.length} member
-                          {chat.memberIds.length !== 1 ? "s" : ""}
-                        </span>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <div className="flex items-center gap-1">
+                          <Users className="h-3 w-3 text-muted-foreground/70" />
+                          <span className="text-[11px] text-muted-foreground/70">
+                            {chat.memberIds.length} member
+                            {chat.memberIds.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        {onlineCount > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-green-600 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                            {onlineCount} online
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -659,6 +825,7 @@ export function ChatPage({
                 currentUser.id,
                 lastReadMap[dm.id],
               );
+              const isOtherOnline = onlineUserIds.has(otherId);
               return (
                 <button
                   type="button"
@@ -668,17 +835,27 @@ export function ChatPage({
                   className="w-full text-left bg-card border border-border rounded-2xl p-4 hover:border-primary/40 hover:shadow-sm transition-all group"
                 >
                   <div className="flex items-start gap-3">
-                    <div
-                      className="w-11 h-11 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"
-                      style={{ backgroundColor: avatarColor(otherId) }}
-                    >
-                      {getInitials(otherName)}
+                    <div className="relative flex-shrink-0">
+                      <div
+                        className="w-11 h-11 rounded-full flex items-center justify-center text-white font-semibold text-sm"
+                        style={{ backgroundColor: avatarColor(otherId) }}
+                      >
+                        {getInitials(otherName)}
+                      </div>
+                      <OnlineDot isOnline={isOtherOnline} size="md" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-foreground truncate">
-                          {otherName}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-foreground truncate">
+                            {otherName}
+                          </span>
+                          {isOtherOnline && (
+                            <span className="text-[10px] text-green-600 font-medium whitespace-nowrap">
+                              Online
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {lastMsg && (
                             <span className="text-[11px] text-muted-foreground">
@@ -746,36 +923,48 @@ export function ChatPage({
 
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Add Members</Label>
-              <div className="rounded-xl border border-border overflow-hidden">
-                {otherUsers.map((user) => (
-                  <label
-                    key={user.id}
-                    htmlFor={`member-${user.id}`}
-                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-secondary/60 cursor-pointer transition-colors border-b border-border last:border-b-0"
-                  >
-                    <Checkbox
-                      id={`member-${user.id}`}
-                      checked={selectedMemberIds.includes(user.id)}
-                      onCheckedChange={() => toggleMember(user.id)}
-                      data-ocid="chat.checkbox"
-                    />
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                      style={{ backgroundColor: avatarColor(user.id) }}
+              <ScrollArea className="max-h-60">
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {otherUsers.map((user) => (
+                    <label
+                      key={user.id}
+                      htmlFor={`member-${user.id}`}
+                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-secondary/60 cursor-pointer transition-colors border-b border-border last:border-b-0"
                     >
-                      {getInitials(user.displayName)}
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {user.displayName}
-                      </span>
-                      <span className="text-xs text-muted-foreground truncate">
-                        @{user.handle}
-                      </span>
-                    </div>
-                  </label>
-                ))}
-              </div>
+                      <Checkbox
+                        id={`member-${user.id}`}
+                        checked={selectedMemberIds.includes(user.id)}
+                        onCheckedChange={() => toggleMember(user.id)}
+                        data-ocid="chat.checkbox"
+                      />
+                      <div className="relative flex-shrink-0">
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                          style={{ backgroundColor: avatarColor(user.id) }}
+                        >
+                          {getInitials(user.displayName)}
+                        </div>
+                        <OnlineDot isOnline={onlineUserIds.has(user.id)} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {user.displayName}
+                          </span>
+                          {onlineUserIds.has(user.id) && (
+                            <span className="text-[10px] text-green-600 font-medium">
+                              ●
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground truncate">
+                          @{user.handle}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
               {membersError && (
                 <p
                   className="text-xs text-destructive"
@@ -816,39 +1005,51 @@ export function ChatPage({
 
           <div className="flex flex-col gap-3 py-2">
             <Label className="text-sm font-medium">Choose a person</Label>
-            <div className="rounded-xl border border-border overflow-hidden">
-              {otherUsers.map((user) => (
-                <button
-                  type="button"
-                  key={user.id}
-                  onClick={() => {
-                    setSelectedDMUserId(user.id);
-                    setDMUserError("");
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-secondary/60 cursor-pointer transition-colors border-b border-border last:border-b-0 text-left ${
-                    selectedDMUserId === user.id ? "bg-secondary/80" : ""
-                  }`}
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                    style={{ backgroundColor: avatarColor(user.id) }}
+            <ScrollArea className="max-h-64">
+              <div className="rounded-xl border border-border overflow-hidden">
+                {otherUsers.map((user) => (
+                  <button
+                    type="button"
+                    key={user.id}
+                    onClick={() => {
+                      setSelectedDMUserId(user.id);
+                      setDMUserError("");
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-secondary/60 cursor-pointer transition-colors border-b border-border last:border-b-0 text-left ${
+                      selectedDMUserId === user.id ? "bg-secondary/80" : ""
+                    }`}
                   >
-                    {getInitials(user.displayName)}
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-medium text-foreground truncate">
-                      {user.displayName}
-                    </span>
-                    <span className="text-xs text-muted-foreground truncate">
-                      @{user.handle}
-                    </span>
-                  </div>
-                  {selectedDMUserId === user.id && (
-                    <div className="ml-auto w-4 h-4 rounded-full bg-primary flex-shrink-0" />
-                  )}
-                </button>
-              ))}
-            </div>
+                    <div className="relative flex-shrink-0">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                        style={{ backgroundColor: avatarColor(user.id) }}
+                      >
+                        {getInitials(user.displayName)}
+                      </div>
+                      <OnlineDot isOnline={onlineUserIds.has(user.id)} />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {user.displayName}
+                        </span>
+                        {onlineUserIds.has(user.id) && (
+                          <span className="text-[10px] text-green-600 font-medium">
+                            Online
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground truncate">
+                        @{user.handle}
+                      </span>
+                    </div>
+                    {selectedDMUserId === user.id && (
+                      <div className="ml-auto w-4 h-4 rounded-full bg-primary flex-shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
             {dmUserError && (
               <p
                 className="text-xs text-destructive"

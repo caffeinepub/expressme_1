@@ -1,5 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavBar } from "./components/NavBar";
 import { INITIAL_POSTS, MOCK_USERS } from "./data/mockData";
 import { AuthPage } from "./pages/AuthPage";
@@ -29,6 +29,36 @@ export default function App() {
   const [groupChats, setGroupChats] = useState<GroupChat[]>([]);
   const [directMessages, setDirectMessages] = useState<DirectMessage[]>([]);
   const [lastReadMap, setLastReadMap] = useState<Record<string, Date>>({});
+
+  // Online status: start with roughly half of users online
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(() => {
+    const allIds = MOCK_USERS.map((u) => u.id);
+    const shuffled = [...allIds].sort(() => Math.random() - 0.5);
+    return new Set(shuffled.slice(0, Math.ceil(shuffled.length / 2)));
+  });
+
+  // Simulate live presence by randomly toggling 1-2 users every 25 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const allIds = MOCK_USERS.map((u) => u.id);
+      const toggleCount = Math.random() < 0.5 ? 1 : 2;
+      const toToggle = [...allIds]
+        .sort(() => Math.random() - 0.5)
+        .slice(0, toggleCount);
+      setOnlineUserIds((prev) => {
+        const next = new Set(prev);
+        for (const id of toToggle) {
+          if (next.has(id)) {
+            next.delete(id);
+          } else {
+            next.add(id);
+          }
+        }
+        return next;
+      });
+    }, 25000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleNavigate = useCallback((page: Page, category?: PostCategory) => {
     setCurrentPage(page);
@@ -220,6 +250,53 @@ export default function App() {
     [currentUser],
   );
 
+  const handleReactToMessage = useCallback(
+    (
+      chatType: "group" | "dm",
+      chatId: string,
+      messageId: string,
+      emoji: string,
+      userId: string,
+    ) => {
+      const toggleReaction = (msg: ChatMessage): ChatMessage => {
+        if (msg.id !== messageId) return msg;
+        const reactions = { ...(msg.reactions ?? {}) };
+        const users = reactions[emoji] ? [...reactions[emoji]] : [];
+        const idx = users.indexOf(userId);
+        if (idx >= 0) {
+          users.splice(idx, 1);
+        } else {
+          users.push(userId);
+        }
+        if (users.length === 0) {
+          delete reactions[emoji];
+        } else {
+          reactions[emoji] = users;
+        }
+        return { ...msg, reactions };
+      };
+
+      if (chatType === "group") {
+        setGroupChats((prev) =>
+          prev.map((c) =>
+            c.id === chatId
+              ? { ...c, messages: c.messages.map(toggleReaction) }
+              : c,
+          ),
+        );
+      } else {
+        setDirectMessages((prev) =>
+          prev.map((dm) =>
+            dm.id === chatId
+              ? { ...dm, messages: dm.messages.map(toggleReaction) }
+              : dm,
+          ),
+        );
+      }
+    },
+    [],
+  );
+
   // Compute total unread messages
   const totalUnread = useMemo(() => {
     if (!currentUser) return 0;
@@ -300,6 +377,8 @@ export default function App() {
           onSendDM={handleSendDM}
           onMarkRead={handleMarkRead}
           lastReadMap={lastReadMap}
+          onlineUserIds={onlineUserIds}
+          onReactToMessage={handleReactToMessage}
         />
       )}
       {currentPage === "upload" && (

@@ -44,6 +44,7 @@ export interface ChatMessage {
   authorHandle: string;
   content: string;
   createdAt: Date;
+  reactions?: Record<string, string[]>;
 }
 
 export interface GroupChat {

@@ -58,6 +58,38 @@ export const MOCK_USERS: User[] = [
     avatarColor: AVATAR_COLORS[5],
     joinedAt: new Date("2025-11-01"),
   },
+  {
+    id: "u7",
+    displayName: "Music Maya",
+    handle: "music_maya",
+    bio: "Piano, guitar, and everything in between. Music is my language 🎵",
+    avatarColor: AVATAR_COLORS[0],
+    joinedAt: new Date("2025-11-10"),
+  },
+  {
+    id: "u8",
+    displayName: "Gamer Jay",
+    handle: "gamer_jay",
+    bio: "Pro at Minecraft, learning to code my own game. Let's play! 🕹️",
+    avatarColor: AVATAR_COLORS[1],
+    joinedAt: new Date("2025-11-15"),
+  },
+  {
+    id: "u9",
+    displayName: "Science Zoe",
+    handle: "science_zoe",
+    bio: "Chemistry experiments, space facts, and bug collecting. Future scientist! 🔬",
+    avatarColor: AVATAR_COLORS[2],
+    joinedAt: new Date("2025-11-20"),
+  },
+  {
+    id: "u10",
+    displayName: "Drama Dev",
+    handle: "drama_dev",
+    bio: "School play lead three years running. The world is my stage! 🎭",
+    avatarColor: AVATAR_COLORS[3],
+    joinedAt: new Date("2025-12-01"),
+  },
 ];
 
 const now = new Date();
